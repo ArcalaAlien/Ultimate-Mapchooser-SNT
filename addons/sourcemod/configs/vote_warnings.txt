@@ -77,7 +77,7 @@
 	"default"
 	{
 		"message"   "{TIME} seconds until vote."
-		"notification"  "H"
+		"notification"  "C"
 		"sound"     ""
 	}
 

@@ -61,6 +61,7 @@ new Handle:cvar_block_slots         = INVALID_HANDLE;
 new Handle:cvar_novote              = INVALID_HANDLE;
 new Handle:cvar_nommsg_disp         = INVALID_HANDLE;
 new Handle:cvar_mapnom_display      = INVALID_HANDLE;
+ConVar cvar_display_cat				= null;
 ////----/CONVARS-----/////
 
 //Stores the current category.
@@ -259,6 +260,13 @@ public OnPluginStart()
 		"sm_umc_vote_tierdisplay",
 		"C",
 		"Determines where the Tiered Vote Message is displayed on the screen.\n C - Center Message\n S - Chat Message\n T - Top Message\n H - Hint Message"
+	);
+
+	cvar_display_cat = CreateConVar(
+		"sm_umc_display_cats",
+		"1",
+		"Specifies if maps in vote will display their categories too.",
+		0, true, 0.0, true, 1.0
 	);
 
 	//Version
@@ -2144,6 +2152,20 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 						GetMapDisplayString(dispKV, nomGroup, mapName, gDisp, display, sizeof(display));
 						CloseHandle(dispKV);
 
+						// Add category name to display if enabled
+						if (cvar_display_cat.BoolValue) {
+							// Ignore this part, this is just truncating the group names for the surf server.
+							char groupAbbrv[16];
+							if (StrContains(nomGroup, "Com") != -1)
+								FormatEx(groupAbbrv, sizeof(groupAbbrv), "Combat");
+							else if (StrContains(nomGroup, "Skil") != -1)
+								FormatEx(groupAbbrv, sizeof(groupAbbrv), "Skill");
+							else if (StrContains(nomGroup, "Are") != -1)
+								FormatEx(groupAbbrv, sizeof(groupAbbrv), "Arena");
+
+							FormatEx(display, sizeof(display), "%s (%s)", display, groupAbbrv);
+						}
+
 						new Handle:map = CreateMapTrie(mapName, catName);
 						new Handle:nomMapcycle = CreateKeyValues("umc_mapcycle");
 						KvCopySubkeys(nomKV, nomMapcycle);
@@ -2215,6 +2237,13 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 					new Handle:map = CreateMapTrie(mapName, catName);
 					new Handle:nomMapcycle = CreateKeyValues("umc_mapcycle");
 					KvCopySubkeys(nomKV, nomMapcycle);
+
+					//Add category name to menu item if enabled.
+					if (cvar_display_cat.BoolValue)
+						if (StrContains(catName, "Combat", false) != -1)	
+							FormatEx(display, sizeof(display), "%s (Combat Surf)", display, catName);
+						else
+							FormatEx(display, sizeof(display), "%s (%s)", display, catName);
 
 					SetTrieValue(map, "mapcycle", nomMapcycle);
 					InsertArrayCell(map_vote, position, map);
@@ -2320,6 +2349,13 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 			new Handle:dispKV = CreateKeyValues("umc_mapcycle");
 			KvCopySubkeys(okv, dispKV);
 			GetMapDisplayString(dispKV, catName, mapName, gDisp, display, sizeof(display));
+
+			if (cvar_display_cat.BoolValue)
+				if (StrContains(catName, "Combat", false) != -1)
+					Format(display, sizeof(display), "%s (Combat Surf)", display);
+				else
+					Format(display, sizeof(display), "%s (%s)", display, catName);
+
 			CloseHandle(dispKV);
 			new Handle:map = CreateMapTrie(mapName, catName);
 			new Handle:mapMapcycle = CreateKeyValues("umc_mapcycle");
@@ -2359,7 +2395,7 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 	new Handle:infoArr = BuildNumArray(voteCounter);
 
 	new Handle:voteItem = INVALID_HANDLE;
-	decl String:buffer[MAP_LENGTH];
+	decl String:buffer[MAP_LENGTH * 2];
 	for (new i = 0; i < voteCounter; i++)
 	{
 		voteItem = CreateTrie();
@@ -2829,7 +2865,8 @@ DisplayTierMessage(timeleft)
 {
 	decl String:notification[10];
 	GetConVarString(cvar_vote_tierdisplay, notification, sizeof(notification));
-	DisplayServerMessage(notification, "%t", "Another Vote", timeleft);
+	PrintCenterTextAll("%T", "Another Vote", timeleft);
+	//DisplayServerMessage(notification, "%t", "Another Vote", timeleft);
 }
 
 //Empties the vote storage
@@ -3347,7 +3384,8 @@ DisplayRunoffMessage(timeRemaining)
 {
 	decl String:notification[10];
 	GetConVarString(cvar_runoff_display, notification, sizeof(notification));
-	DisplayServerMessage(notification, "%t", (timeRemaining > 5) ? "Runoff Msg" : "Another Vote", timeRemaining);
+	PrintCenterTextAll("%T", (timeRemaining > 5) ? "Runoff Msg" : "Another Vote", timeRemaining);
+	//DisplayServerMessage(notification, "%t", (timeRemaining > 5) ? "Runoff Msg" : "Another Vote", timeRemaining);
 }
 
 //Handles the winner of an end-of-map map vote.
