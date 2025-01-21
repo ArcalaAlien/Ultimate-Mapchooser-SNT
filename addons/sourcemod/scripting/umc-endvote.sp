@@ -23,6 +23,7 @@ along with this plugin.  If not, see <http://www.gnu.org/licenses/>.
 #include <umc-core>
 #include <umc_utils>
 #include <umc-endvote>
+#include <umc_workshop_stocks>
 
 #undef REQUIRE_PLUGIN
 #include <mapchooser>
@@ -31,7 +32,7 @@ along with this plugin.  If not, see <http://www.gnu.org/licenses/>.
 public Plugin:myinfo =
 {
 	name        = "[UMC] End of Map Vote",
-	author      = "Steell, Powerlord, Mr.Silence, AdRiAnIlloO",
+	author      = "Steell, Powerlord, Mr.Silence, AdRiAnIlloO, Edit By ArcalaAlien",
 	description = "Extends Ultimate Mapchooser to allow End of Map Votes",
 	version     = PL_VERSION,
 	url         = "http://forums.alliedmods.net/showthread.php?t=134190"
@@ -94,6 +95,8 @@ new Handle:cvar_zpomaxrnds = INVALID_HANDLE; // ZPS Objective
 
 //CS:GO mp_match_can_clinch cvar
 new Handle:cvar_clinch = INVALID_HANDLE;
+
+ConVar cvar_instant_map_change = null; // cvar to change map as soon as game is over.
 
 //Flags
 new bool:timer_alive;      //Is the time-based vote timer ticking?
@@ -343,6 +346,13 @@ public OnPluginStart()
 		0, true, 0.0, true, 1.0
 	);
 
+	cvar_instant_map_change = CreateConVar(
+		"sm_umc_endvote_instant_map_change",
+		"1",
+		"Skips the scoreboard at round end",
+		0, true, 0.0, true, 1.0
+	);
+
 	//Create the config if it doesn't exist, and then execute it.
 	AutoExecConfig(true, "umc-endvote");
 
@@ -559,6 +569,14 @@ public Event_RoundEnd(Handle:evnt, const String:name[], bool:dontBroadcast)
 //Called when a round ends in tf2.
 public Event_RoundEndTF2(Handle:evnt, const String:name[], bool:dontBroadcast)
 {
+	if (StrEqual(name, "teamplay_win_panel") && cvar_instant_map_change.BoolValue)
+	{
+		char nextMap[MAP_LENGTH];
+		GetNextMap(nextMap, sizeof(nextMap));
+
+		ForceChangeMap(nextMap, 10.0);
+	}
+
 	if (vote_roundend)
 	{
 		vote_roundend = false;

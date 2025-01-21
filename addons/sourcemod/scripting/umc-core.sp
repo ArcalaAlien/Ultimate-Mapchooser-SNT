@@ -22,19 +22,19 @@ along with this plugin.  If not, see <http://www.gnu.org/licenses/>.
 //Dependencies
 #include <umc-core>
 #include <umc_utils>
+#include <umc_workshop_stocks>
 #include <sourcemod>
 #include <sdktools_sound>
 #include <emitsoundany>
-
 //Some definitions
 #define NOTHING_OPTION "?nothing?"
 #define WEIGHT_KEY "___calculated-weight"
 
-//Plugin Information
+//Plugin info
 public Plugin:myinfo =
 {
 	name        = "[UMC] Ultimate Mapchooser Core",
-	author      = "Steell, Powerlord, Mr.Silence, AdRiAnIlloO",
+	author      = "Steell, Powerlord, Mr.Silence, AdRiAnIlloO, Edit By ArcalaAlien",
 	description = "Core component for [UMC]",
 	version     = PL_VERSION,
 	url         = "http://forums.alliedmods.net/showthread.php?t=134190"
@@ -362,6 +362,9 @@ public OnMapStart()
 	CreateTimer(5.0, UpdateTrackingCvar);
 
 	CacheSound(countdown_sound);
+
+	LogUMCMessage("Making sure workshop maps are tracked.");
+	TrackWorkshopMaps();
 }
 
 public Action:UpdateTrackingCvar(Handle:timer)
@@ -897,6 +900,7 @@ Handle:CreateMapGroupArray(Handle:kv, Handle:mapcycle, bool:isNom, bool:forMapCh
 	{
 		if (IsValidCat(kv, mapcycle, isNom, forMapChange))
 		{
+
 			KvGetSectionName(kv, groupName, sizeof(groupName));
 			PushArrayString(result, groupName);
 		}
@@ -1460,6 +1464,72 @@ public Action:Command_StopVote(client, args)
 	}
 
 	return Plugin_Handled;
+}
+
+//************************************************************************************************//
+//                                        MAPCYCLE STUFF                                          //
+//************************************************************************************************//
+
+KeyValues GetMapcycle()
+{
+
+	ConVar cycleFile = FindConVar("sm_umc_nominate_cyclefile");
+	if (!cycleFile)
+		return null;
+
+	char filename[PLATFORM_MAX_PATH];
+	cycleFile.GetString(filename, sizeof(filename));
+
+	KeyValues result = view_as<KeyValues>(GetKvFromFile(filename, "umc_rotation"));
+	if (!result)
+	{
+		LogError("Unable to get map cycle file!");
+		return null;
+	}
+
+	return result;
+}
+
+//************************************************************************************************//
+//                                        WORKSHOP SUPPORT                                        //
+//************************************************************************************************//
+
+public void TrackWorkshopMaps()
+{
+	KeyValues mapcycle = GetMapcycle();
+	if (!mapcycle)
+	{
+		LogError("TrackWorkshopMaps: Unable to get mapcycle file!");
+		return;
+	}
+
+	mapcycle.Rewind();
+	LookForWorkshopMaps(mapcycle);
+	mapcycle.Close();
+}
+
+void LookForWorkshopMaps(KeyValues mapcycle)
+{
+	while (mapcycle.GotoNextKey(false))
+	{
+		if (mapcycle.GotoFirstSubKey(false))
+		{
+			LookForWorkshopMaps(mapcycle);
+			mapcycle.GoBack();
+		}
+		else
+		{
+			char map[MAP_LENGTH];
+			mapcycle.GetSectionName(map, sizeof(map));
+
+			if (StrContains(map, "@ws.") != -1)
+			{
+				char mapId[64];
+				ExtractWorkshopMapIdUMC(map, mapId, sizeof(mapId));
+				ServerCommand("tf_workshop_map_sync %s", mapId);
+			}
+		}
+	}
 }
 
 //************************************************************************************************//
@@ -2152,19 +2222,15 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 						GetMapDisplayString(dispKV, nomGroup, mapName, gDisp, display, sizeof(display));
 						CloseHandle(dispKV);
 
-						// Add category name to display if enabled
-						if (cvar_display_cat.BoolValue) {
-							// Ignore this part, this is just truncating the group names for the surf server.
-							char groupAbbrv[16];
-							if (StrContains(nomGroup, "Com") != -1)
-								FormatEx(groupAbbrv, sizeof(groupAbbrv), "Combat");
-							else if (StrContains(nomGroup, "Skil") != -1)
-								FormatEx(groupAbbrv, sizeof(groupAbbrv), "Skill");
-							else if (StrContains(nomGroup, "Are") != -1)
-								FormatEx(groupAbbrv, sizeof(groupAbbrv), "Arena");
+						if (StrContains(display, "@ws.") != -1)
+							ExtractWorkshopMapName(display, display, sizeof(display));
 
-							FormatEx(display, sizeof(display), "%s (%s)", display, groupAbbrv);
-						}
+						// Add category name to display if enabled
+						if (cvar_display_cat.BoolValue)
+							if (StrContains(catName, "Combat", false) != -1)	
+								FormatEx(display, sizeof(display), "%s (Combat Surf)", display, catName);
+							else
+								FormatEx(display, sizeof(display), "%s (%s)", display, catName);
 
 						new Handle:map = CreateMapTrie(mapName, catName);
 						new Handle:nomMapcycle = CreateKeyValues("umc_mapcycle");
@@ -2237,6 +2303,9 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 					new Handle:map = CreateMapTrie(mapName, catName);
 					new Handle:nomMapcycle = CreateKeyValues("umc_mapcycle");
 					KvCopySubkeys(nomKV, nomMapcycle);
+
+					if (StrContains(display, "@ws.") != -1)
+						ExtractWorkshopMapName(display, display, sizeof(display));
 
 					//Add category name to menu item if enabled.
 					if (cvar_display_cat.BoolValue)
@@ -2349,6 +2418,9 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 			new Handle:dispKV = CreateKeyValues("umc_mapcycle");
 			KvCopySubkeys(okv, dispKV);
 			GetMapDisplayString(dispKV, catName, mapName, gDisp, display, sizeof(display));
+
+			if (StrContains(display, "@ws.") != -1)
+				ExtractWorkshopMapName(display, display, sizeof(display));
 
 			if (cvar_display_cat.BoolValue)
 				if (StrContains(catName, "Combat", false) != -1)
@@ -3384,7 +3456,11 @@ DisplayRunoffMessage(timeRemaining)
 {
 	decl String:notification[10];
 	GetConVarString(cvar_runoff_display, notification, sizeof(notification));
-	PrintCenterTextAll("%T", (timeRemaining > 5) ? "Runoff Msg" : "Another Vote", timeRemaining);
+	if (timeRemaining > 5)
+		PrintCenterTextAll("[UMC] %i seconds until next vote", timeRemaining);
+	else
+		PrintCenterTextAll("[UMC] Next runoff vote is starting!");
+	//PrintCenterTextAll("%i", (timeRemaining > 5) ? "Runoff Msg" : "Another Vote", timeRemaining);
 	//DisplayServerMessage(notification, "%t", (timeRemaining > 5) ? "Runoff Msg" : "Another Vote", timeRemaining);
 }
 
@@ -3881,14 +3957,26 @@ DoMapChange(UMC_ChangeMapTime:when, Handle:kv, const String:map[], const String:
 	//Set the next map group
 	strcopy(next_cat, sizeof(next_cat), group);
 
+	char workshopMap[MAP_LENGTH];
+	if (StrContains(map, "@ws.") != -1)
+		FormatWorkshopUMCtoSM(map, workshopMap, sizeof(workshopMap));
+	bool isWs = (workshopMap[0] != '\0');
+
 	//Set the next map in SM
 	LogUMCMessage("Setting nextmap to: %s", map);
-	SetNextMap(map);
+	
+	if (isWs)
+		SetNextMap(workshopMap);
+	else
+		SetNextMap(map);
 
 	//GE:S Fix
 	if (cvar_nextlevel != INVALID_HANDLE)
 	{
-		SetConVarString(cvar_nextlevel, map);
+		if (isWs)
+			SetConVarString(cvar_nextlevel, workshopMap);
+		else
+			SetConVarString(cvar_nextlevel, map);
 	}
 
 	//Call UMC forward for next map being set
@@ -3906,9 +3994,21 @@ DoMapChange(UMC_ChangeMapTime:when, Handle:kv, const String:map[], const String:
 
 	Call_StartForward(nextmap_forward);
 	Call_PushCell(new_kv);
-	Call_PushString(map);
 	Call_PushString(group);
-	Call_PushString(display);
+
+	if (isWs)
+	{
+		char wsMapDisplay[MAP_LENGTH];
+		ExtractWorkshopMapName(map, wsMapDisplay, sizeof(wsMapDisplay));
+		Call_PushString(workshopMap);
+		Call_PushString(wsMapDisplay);
+	}
+	else
+	{
+		Call_PushString(map);
+		Call_PushString(display);
+	}
+
 	Call_Finish();
 
 	if (new_kv != INVALID_HANDLE)
@@ -3929,7 +4029,10 @@ DoMapChange(UMC_ChangeMapTime:when, Handle:kv, const String:map[], const String:
 				new iGameEnd = FindEntityByClassname(-1, "game_end");
 				if (iGameEnd == -1 && (iGameEnd = CreateEntityByName("game_end")) == -1)
 				{
-					ForceChangeInFive(map, reason);
+					if (isWs)
+						ForceChangeInFive(workshopMap, reason);
+					else
+						ForceChangeInFive(map, reason);
 				} 
 				else 
 				{
@@ -3938,7 +4041,10 @@ DoMapChange(UMC_ChangeMapTime:when, Handle:kv, const String:map[], const String:
 			}
 			else
 			{
-				ForceChangeInFive(map, reason);
+				if (isWs)
+					ForceChangeInFive(workshopMap, reason);
+				else
+					ForceChangeInFive(map, reason);
 			}
 		}
 		case ChangeMapTime_RoundEnd: //We change the map at the end of the round.
@@ -4003,6 +4109,9 @@ bool:IsValidMap(Handle:kv, Handle:mapcycle, const String:groupName[], bool:isNom
 	decl String:mapName[MAP_LENGTH];
 	KvGetSectionName(kv, mapName, sizeof(mapName));
 
+	if (StrContains(mapName, "@ws.") != -1)
+		return true;
+
 	if (!IsMapValid(mapName))
 	{
 		LogUMCMessage("WARNING: Map \"%s\" does not exist on the server. (Group: \"%s\")", mapName, groupName);
@@ -4032,6 +4141,8 @@ bool:IsValidMap(Handle:kv, Handle:mapcycle, const String:groupName[], bool:isNom
 	return false;
 }
 
+
+// No it doesnt? What are you on about.
 //Determines if the server has the required number of players for the given category and the required time.
 //    kv: a mapcycle whose traversal stack is currently at the level of the category.
 bool:IsValidCat(Handle:kv, Handle:mapcycle, bool:isNom=false, bool:forMapChange=true)

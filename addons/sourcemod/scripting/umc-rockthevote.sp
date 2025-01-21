@@ -22,12 +22,15 @@ along with this plugin.  If not, see <http://www.gnu.org/licenses/>.
 #include <sourcemod>
 #include <umc-core>
 #include <umc_utils>
+#include <umc_workshop_stocks>
+
+#include <chat-processor>
 
 //Plugin Information
 public Plugin:myinfo =
 {
 	name        = "[UMC] Rock The Vote",
-	author      = "Steell, Powerlord, Mr.Silence, AdRiAnIlloO",
+	author      = "Steell, Powerlord, Mr.Silence, AdRiAnIlloO, Edit By ArcalaAlien",
 	description = "Extends Ultimate Mapchooser to provide RTV map voting",
 	version     = PL_VERSION,
 	url         = "http://forums.alliedmods.net/showthread.php?t=134190"
@@ -62,6 +65,11 @@ new Handle:cvar_voteflags            = INVALID_HANDLE;
 new Handle:cvar_enterflags           = INVALID_HANDLE;
 new Handle:cvar_enterbonusflags      = INVALID_HANDLE;
 new Handle:cvar_enterbonusamt        = INVALID_HANDLE;
+ConVar cvar_discount_afk = null;
+ConVar cvar_afk_timeout = null;
+ConVar cvar_afk_chat_timeout = null;
+ConVar cvar_afk_warning_sound = null;
+ConVar cvar_afk_move_sound = null;
 ////----/CONVARS-----/////
 
 //Mapcycle KV
@@ -93,6 +101,16 @@ new bool:rtv_inprogress; //Is the rtv vote in progress?
 //Sounds to be played at the start and end of votes.
 new String:vote_start_sound[PLATFORM_MAX_PATH], String:vote_end_sound[PLATFORM_MAX_PATH],
 	String:runoff_sound[PLATFORM_MAX_PATH];
+
+// AFK Manager
+Handle afkCheckTimer[MAXPLAYERS + 1] = {INVALID_HANDLE, ...}; // Timer to check each player if they're AFK;
+int timeAFK[MAXPLAYERS + 1];
+bool playerAFK[MAXPLAYERS + 1] = {false, ...}; // Is the player afk?
+bool updatedThreshold[MAXPLAYERS + 1] = {false, ...};
+float clientPrevPos[MAXPLAYERS + 1][3]; // Player's previous position
+float clientPrevEyeAngles[MAXPLAYERS + 1][3]; // Player's previous look direction
+char afkWarnSound[PLATFORM_MAX_PATH]; // Sound to play to warn players they'll be marked afk
+char afkMoveSound[PLATFORM_MAX_PATH]; // Sound to play when a player is marked AFK
 
 //************************************************************************************************//
 //                                        SOURCEMOD EVENTS                                        //
@@ -290,6 +308,32 @@ public OnPluginStart()
 		0, true, 0.0, true, 1.0
 	);
 
+	cvar_discount_afk = CreateConVar(
+		"sm_umc_rtv_ignore_afk",
+		"1",
+		"Ignore AFK players when counting for RTV?",
+		0, true, 0.0, true, 1.0
+	);
+
+	cvar_afk_timeout = CreateConVar(
+		"sm_umc_rtv_afk_timeout",
+		"300",
+		"How long a player has to be afk to not be counted, in seconds.",
+		0, true, 0.0, false
+	);
+
+	cvar_afk_warning_sound = CreateConVar(
+		"sm_umc_rtv_afk_warning_sound",
+		"",
+		"Sound file (relative to sound folder) to play warning a player they'll be afk."
+	);
+
+	cvar_afk_move_sound = CreateConVar(
+		"sm_umc_rtv_afk_move_sound",
+		"",
+		"Sound file (relative to sound folder) to play when a player is marked AFK"
+	);
+
 	//Create the config if it doesn't exist, and then execute it.
 	AutoExecConfig(true, "umc-rockthevote");
 
@@ -389,6 +433,133 @@ public OnClientPutInServer(client)
 	{
 		UpdateRTVThreshold();
 	}
+
+	afkCheckTimer[client] = CreateTimer(1.0, Timer_CheckAFKPlayer, client, TIMER_REPEAT | TIMER_FLAG_NO_MAPCHANGE);
+}
+
+public Action Timer_CheckAFKPlayer(Handle timer, any client)
+{
+	// Get the client's current position
+	float clientCurrentPos[3];
+	float clientCurrentEyeAngles[3];
+	GetClientEyePosition(client, clientCurrentPos);
+	GetClientEyeAngles(client, clientCurrentEyeAngles);
+
+	// Check to see if the client's current position matches their previous one
+	if (VectorCompare(clientCurrentPos, clientPrevPos[client]) || VectorCompare(clientCurrentEyeAngles, clientPrevEyeAngles[client]))
+		timeAFK[client]++; // If yes, add 1 second to the amount of time they've been AFK
+	else {
+		// If not, reset all of their values and update RTV threshold.
+		timeAFK[client] = 0;
+		VectorClone(clientCurrentPos, clientPrevPos[client]);
+		VectorClone(clientCurrentEyeAngles, clientPrevEyeAngles[client]);
+		if (playerAFK[client]) {
+			// Notify the client that they're no longer AFK
+			PrintToChat(client, "[RTV] You are no longer AFK.");
+			playerAFK[client] = !playerAFK[client];
+			UpdateRTVThreshold();
+			int size = GetArraySize(rtv_clients);
+			//Start RTV if the new size has surpassed the threshold required to RTV.
+			if (size >= rtv_threshold)
+			{
+				//Start the vote if there isn't one happening already.
+				if (UMC_IsNewVoteAllowed("core"))
+				{
+					PrintToChatAll("[UMC] %t", "RTV Start");
+					StartRTV();
+				}
+				else //Otherwise, display a message.
+				{
+					PrintToChat(client, "[UMC] %t", "Vote In Progress");
+					MakeRetryVoteTimer(StartRTV);
+				}
+			}
+		}
+		return Plugin_Continue;
+	}
+
+	// Check how long the client has been AFK for
+	// Warn a client when they're going to be moved to afk in 30 seconds
+	if (timeAFK[client] == (cvar_afk_timeout.IntValue - 30))
+	{
+		PrintToChat(client, "[RTV] You have 30 seconds before you're marked afk!");
+		EmitSoundToClient(client, afkWarnSound);
+	}
+	// Once it equals the timeout mark a player as AFK and update RTV threshold.
+	else if (timeAFK[client] == cvar_afk_timeout.IntValue)
+	{
+		PrintToChat(client, "[RTV] You have been marked AFK, you will not be counted in the amount of players required to RTV.");
+		EmitSoundToClient(client, afkMoveSound);
+		playerAFK[client] = true;
+		updatedThreshold[client] = !updatedThreshold[client];
+		UpdateRTVThreshold();
+
+		int size = GetArraySize(rtv_clients);
+		//Start RTV if the new size has surpassed the threshold required to RTV.
+		if (size >= rtv_threshold)
+		{
+			//Start the vote if there isn't one happening already.
+			if (UMC_IsNewVoteAllowed("core"))
+			{
+				PrintToChatAll("[UMC] %t", "RTV Start");
+				StartRTV();
+			}
+			else //Otherwise, display a message.
+			{
+				PrintToChat(client, "[UMC] %t", "Vote In Progress");
+				MakeRetryVoteTimer(StartRTV);
+			}
+		}
+	}
+
+	// Repeat the timer.
+	return Plugin_Continue;
+}
+
+bool VectorCompare(float vec1[3], float vec2[3])
+{
+	int matches;
+	for (int i; i < 3; i++)
+		if (vec1[i] == vec2[i])
+			matches++;
+	
+	if (matches == 3)
+		return true;
+	
+	return false;
+}
+
+void VectorClone(float origin[3], float dest[3])
+{
+	for (int i; i < 3; i++)
+		dest[i] = origin[i];
+}
+
+void ResetClientAFKVars(int client)
+{
+	timeAFK[client] = 0;
+	playerAFK[client] = false;
+	updatedThreshold[client] = false;
+	VectorClone({0.0, 0.0, 0.0}, clientPrevPos[client]);
+	if (afkCheckTimer[client] != INVALID_HANDLE)
+		CloseHandleEx(afkCheckTimer[client]);
+}
+
+public void OnPlayerRunCmdPost(int client, int buttons, int impulse, const float vel[3], const float angles[3], int weapon, int subtype, int cmdnum, int tickcount, int seed, const int mouse[2])
+{
+	if (client == 0)
+		return;
+
+	if (buttons)
+	{
+		// Mark player as not AFK
+		if (playerAFK[client]) {
+			PrintToChat(client, "[RTV] You are no longer AFK.");
+			playerAFK[client] = !playerAFK[client];
+			timeAFK[client] = 0;
+			UpdateRTVThreshold();
+		}
+	}
 }
 
 //Called when a player types in chat. Required to handle user commands.
@@ -398,6 +569,27 @@ public Action:OnPlayerChat(client, const String:command[], argc)
 	if (argc == 0) 
 	{
 		return Plugin_Continue;
+	}
+
+	// Mark player not afk.
+	playerAFK[client] = false;
+	timeAFK[client] = 0;
+
+	int size = GetArraySize(rtv_clients);
+	//Start RTV if the new size has surpassed the threshold required to RTV.
+	if (size >= rtv_threshold)
+	{
+		//Start the vote if there isn't one happening already.
+		if (UMC_IsNewVoteAllowed("core"))
+		{
+			PrintToChatAll("[UMC] %t", "RTV Start");
+			StartRTV();
+		}
+		else //Otherwise, display a message.
+		{
+			PrintToChat(client, "[UMC] %t", "Vote In Progress");
+			MakeRetryVoteTimer(StartRTV);
+		}
 	}
 
 	//Get what was typed.
@@ -412,6 +604,15 @@ public Action:OnPlayerChat(client, const String:command[], argc)
 	}
 
 	return Plugin_Continue;
+}
+
+public void CP_OnChatMessagePost(int author, ArrayList recipients, const char[] flagstring, const char[] formatstring, const char[] name, const char[] message, bool processcolors, bool removecolors)
+{
+	if (playerAFK[author])
+		PrintToChat(author, "[RTV] You are no longer afk!");
+	// Mark player not afk.
+	playerAFK[author] = false;
+	timeAFK[author] = 0;
 }
 
 //Called after a client has left the server. Required for updating the RTV threshold.
@@ -431,6 +632,9 @@ public OnClientDisconnect_Post(client)
 	//Recalculate the RTV threshold.
 	UpdateRTVThreshold();
 
+	if (cvar_discount_afk.BoolValue)
+		ResetClientAFKVars(client);
+
 	//Start RTV if we haven't had an RTV already AND the new amount of players on the server as passed the required threshold.
 	if (!rtv_completed && GetArraySize(rtv_clients) >= rtv_threshold)
 	{
@@ -444,6 +648,10 @@ public OnMapEnd()
 {
 	//Empty array of clients who have entered RTV.
 	ClearArray(rtv_clients);
+
+	if (cvar_discount_afk.BoolValue)
+		for (int i = 1; i < MAXPLAYERS; i++)
+			ResetClientAFKVars(i);
 }
 
 //************************************************************************************************//
@@ -489,11 +697,15 @@ SetupVoteSounds()
 	GetConVarString(cvar_rtv_startsound, vote_start_sound, sizeof(vote_start_sound));
 	GetConVarString(cvar_rtv_endsound, vote_end_sound, sizeof(vote_end_sound));
 	GetConVarString(cvar_runoff_sound, runoff_sound, sizeof(runoff_sound));
+	GetConVarString(cvar_afk_warning_sound, afkWarnSound, sizeof(afkWarnSound));
+	GetConVarString(cvar_afk_move_sound, afkMoveSound, sizeof(afkMoveSound));
 
 	//Gotta cache 'em all!
 	CacheSound(vote_start_sound);
 	CacheSound(vote_end_sound);
 	CacheSound(runoff_sound);
+	CacheSound(afkWarnSound);
+	CacheSound(afkMoveSound);
 }
 
 //Reloads the mapcycle. Returns true on success, false on failure.
@@ -695,12 +907,24 @@ public Action:Handle_RTVTimer(Handle:timer)
 	return Plugin_Stop;
 }
 
+// Returns the numbers of AFK players in the server.
+int ReturnAFKPlayerCount()
+{
+	int afkCount;
+	for (int i = 1; i < MAXPLAYERS; i++)
+		if (playerAFK[i])
+			afkCount++;
+	return afkCount;
+}
+
 //Recalculated the RTV threshold based off of the given playercount.
 UpdateRTVThreshold()
 {
 	decl String:flags[64];
 	GetConVarString(cvar_voteflags, flags, sizeof(flags));
 	new count = GetClientWithFlagsCount(flags);
+	if (cvar_discount_afk.BoolValue) 
+		count -= ReturnAFKPlayerCount();
 	rtv_threshold = (count > 1) ? RoundToCeil(float(count) * GetConVarFloat(cvar_rtv_needed)) : 1;
 }
 
