@@ -41,7 +41,7 @@ stock void FormatWorkshopSMtoUMC(const char[] input, char[] output, int len)
 }
 
 /**
- *  Get the map name from the workshop link.
+ *  Get the map name from UMC format
  * 
  *  @param input 	Workshop link (UMC Format) mapname@ws.ugc00000000
  *  @param output 	map name
@@ -49,11 +49,28 @@ stock void FormatWorkshopSMtoUMC(const char[] input, char[] output, int len)
  * 
  *  @noreturn
  */
-stock void ExtractWorkshopMapName(const char[] input, char[] output, int len)
+stock void ExtractWorkshopMapNameUMC(const char[] input, char[] output, int len)
 {
 	char inputSplit[2][MAP_LENGTH];
 	ExplodeString(input, "@ws.ugc", inputSplit, 2, MAP_LENGTH);
 	strcopy(output, len, inputSplit[0]);
+}
+
+/**
+ * Get map name from SM format
+ * 
+ * @param input			Sourcemod format workshop/mapname.ugc<mapid>
+ * @param output		Buffer to store map name
+ * @param len			Length of output buffer
+ * 
+ * @noreturn
+ */
+stock void ExtractWorkshopMapNameSM(const char[] input, char[] output, int len)
+{
+	char slashExplode[2][MAP_LENGTH]; char ugcExplode[2][MAP_LENGTH];
+	ExplodeString(input, "/", slashExplode, 2, MAP_LENGTH);
+	ExplodeString(slashExplode[1], ".ugc", ugcExplode, 2, MAP_LENGTH);
+	strcopy(output, len, ugcExplode[0]);
 }
 
 /**

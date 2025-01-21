@@ -394,7 +394,7 @@ public Action:OnPlayerChat(client, const String:command[], argc)
 							FormatEx(groupAbbrv, sizeof(groupAbbrv), "Arena");
 
 						if (StrContains(arg, "@ws.") != -1)
-							ExtractWorkshopMapName(arg, arg, sizeof(arg));
+							ExtractWorkshopMapNameUMC(arg, arg, sizeof(arg));
 
 						PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, arg, groupAbbrv);
 						LogUMCMessage("%N has nominated '%s' from group '%s'", client, arg, groupName);
@@ -578,7 +578,7 @@ public Action:Command_Nominate(client, args)
 					GetCmdArgString(chatTrigger, sizeof(chatTrigger));
 
 					if (StrContains(arg, "@ws.") != -1)
-						ExtractWorkshopMapName(arg, arg, sizeof(arg));
+						ExtractWorkshopMapNameUMC(arg, arg, sizeof(arg));
 
 					if (IsCommandHidden(chatTrigger))
 						PrintToChat(client, "[UMC] %s (%s) is already nominated!", arg, groupName);
@@ -715,7 +715,7 @@ void DisplayNominationList(int client) {
 					
 					char disp[MAP_LENGTH * 2];
 					if (StrContains(mapName, "ws.") != -1)
-						ExtractWorkshopMapName(mapName, mapName, sizeof(mapName));
+						ExtractWorkshopMapNameUMC(mapName, mapName, sizeof(mapName));
 					FormatEx(disp, sizeof(disp), "%s (%s)", mapName, catName);
 					nomList.AddItem("X", disp);
 				}
@@ -1122,7 +1122,7 @@ public Handle_NominationMenu(Handle:menu, MenuAction:action, client, param2)
 			// Ignore this part, this is just truncating the group names for the surf server.
 
 			if (StrContains(map, "ws.") != -1)
-				ExtractWorkshopMapName(map, map, sizeof(map));
+				ExtractWorkshopMapNameUMC(map, map, sizeof(map));
 
 			char groupAbbrv[16];
 			if (StrContains(nomGroup, "Com") != -1) {

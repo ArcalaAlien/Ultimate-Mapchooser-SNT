@@ -2223,7 +2223,7 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 						CloseHandle(dispKV);
 
 						if (StrContains(display, "@ws.") != -1)
-							ExtractWorkshopMapName(display, display, sizeof(display));
+							ExtractWorkshopMapNameUMC(display, display, sizeof(display));
 
 						// Add category name to display if enabled
 						if (cvar_display_cat.BoolValue)
@@ -2305,7 +2305,7 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 					KvCopySubkeys(nomKV, nomMapcycle);
 
 					if (StrContains(display, "@ws.") != -1)
-						ExtractWorkshopMapName(display, display, sizeof(display));
+						ExtractWorkshopMapNameUMC(display, display, sizeof(display));
 
 					//Add category name to menu item if enabled.
 					if (cvar_display_cat.BoolValue)
@@ -2420,7 +2420,7 @@ UMC_BuildOptionsError:BuildMapVoteItems(Handle:voteManager, Handle:result, Handl
 			GetMapDisplayString(dispKV, catName, mapName, gDisp, display, sizeof(display));
 
 			if (StrContains(display, "@ws.") != -1)
-				ExtractWorkshopMapName(display, display, sizeof(display));
+				ExtractWorkshopMapNameUMC(display, display, sizeof(display));
 
 			if (cvar_display_cat.BoolValue)
 				if (StrContains(catName, "Combat", false) != -1)
@@ -3999,7 +3999,7 @@ DoMapChange(UMC_ChangeMapTime:when, Handle:kv, const String:map[], const String:
 	if (isWs)
 	{
 		char wsMapDisplay[MAP_LENGTH];
-		ExtractWorkshopMapName(map, wsMapDisplay, sizeof(wsMapDisplay));
+		ExtractWorkshopMapNameUMC(map, wsMapDisplay, sizeof(wsMapDisplay));
 		Call_PushString(workshopMap);
 		Call_PushString(wsMapDisplay);
 	}
