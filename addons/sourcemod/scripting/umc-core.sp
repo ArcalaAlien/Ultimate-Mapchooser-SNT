@@ -1363,8 +1363,6 @@ public void Native_UMCGetMapGroup(Handle plugin, int numParams)
 	char map[MAP_LENGTH];
 	GetNativeString(2, map, sizeof(map));
 
-	LogUMCMessage("Getting group for map: %s", map);
-
 	Handle mapCycle = GetNativeCell(1);
 	ArrayList groupList = view_as<ArrayList>(UMC_CreateValidMapGroupArray(mapCycle, mapCycle, false, false));
 
@@ -1374,8 +1372,6 @@ public void Native_UMCGetMapGroup(Handle plugin, int numParams)
 		for (int i; i < groupList.Length; i++)
 		{
 			groupList.GetString(i, group, sizeof(group));
-			LogUMCMessage("Current group: %s", group);
-
 			if (StrContains(group, "featured", false) != -1 || StrContains(group, "new", false) != -1)
 				continue;
 			
@@ -1387,13 +1383,13 @@ public void Native_UMCGetMapGroup(Handle plugin, int numParams)
 				for (int j; j < mapList.Length; j++)
 				{
 					mapTrie = mapList.Get(j);
-
 					mapTrie.GetString(MAP_TRIE_MAP_KEY, mapInList, sizeof(mapInList));
-					LogUMCMessage("Current map in list: %s", mapInList);
+
+					if (StrContains(map, "workshop") != -1)
+						ExtractWorkshopMapIdSM(map, map, sizeof(map));
 
 					if (StrContains(mapInList, map, false) != -1)
 					{
-						LogUMCMessage("Found %s in %s", map, group);
 						SetNativeString(3, group, GetNativeCell(4));
 						groupList.Close();
 						mapList.Close();

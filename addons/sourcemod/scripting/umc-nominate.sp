@@ -794,11 +794,11 @@ void DisplayRPList(int client)
 		for (int i; i < voteMemory.Length; i++)
 		{
 			voteMemory.GetString(i, mapInfo, sizeof(mapInfo));
-			if (StrContains(mapInfo, "workshop/") != -1)
-				GetMapDisplayName(mapInfo, mapInfo, sizeof(mapInfo));
-			
 			UMC_GetMapGroup(umc_mapcycle, mapInfo, mapGroup, sizeof(mapGroup));
 			
+			if (StrContains(mapInfo, "workshop/") != -1)
+				GetMapDisplayName(mapInfo, mapInfo, sizeof(mapInfo));
+
 			if (mapGroup[0] != '\0')
 				FormatEx(mapInfo, sizeof(mapInfo), "%s (%s)", mapInfo, mapGroup);
 			

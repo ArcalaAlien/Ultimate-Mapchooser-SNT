@@ -357,6 +357,12 @@ public OnPluginStart()
 	HookConVarChange(cvar_rtv_enable, Handle_RTVChange);
 	HookConVarChange(cvar_rtv_needed, Handle_ThresholdChange);
 
+	//Register the !afk /afk command
+	char afkCommand[24]; char cmdToReg[24];
+	cvar_afk_command.GetString(afkCommand, sizeof(afkCommand));
+	FormatEx(cmdToReg, sizeof(cmdToReg), "sm_%s", afkCommand);
+	RegConsoleCmd(cmdToReg, Command_AFK);
+
 	//Initialize our memory arrays
 	new numCells = ByteCountToCells(MAP_LENGTH);
 	vote_mem_arr    = CreateArray(numCells);
@@ -429,12 +435,6 @@ public OnMapStart()
 {
 	//Setup vote sounds.
 	SetupVoteSounds();
-
-	//Register the !afk /afk command
-	char afkCommand[24];
-	cvar_afk_command.GetString(afkCommand, sizeof(afkCommand));
-	FormatEx(afkCommand, sizeof(afkCommand), "sm_%s", afkCommand);
-	RegConsoleCmd(afkCommand, Command_AFK);
 }
 
 //Called when a client enters the server. Required for updating the RTV threshold.
@@ -583,10 +583,6 @@ public Action:OnPlayerChat(client, const String:command[], argc)
 		return Plugin_Continue;
 	}
 
-	// Mark player not afk.
-	playerAFK[client] = false;
-	timeAFK[client] = 0;
-
 	int size = GetArraySize(rtv_clients);
 	//Start RTV if the new size has surpassed the threshold required to RTV.
 	if (size >= rtv_threshold)
@@ -620,11 +616,15 @@ public Action:OnPlayerChat(client, const String:command[], argc)
 
 public void CP_OnChatMessagePost(int author, ArrayList recipients, const char[] flagstring, const char[] formatstring, const char[] name, const char[] message, bool processcolors, bool removecolors)
 {
-	if (playerAFK[author])
-		PrintToChat(author, "[RTV] You are no longer afk!");
-	// Mark player not afk.
-	playerAFK[author] = false;
-	timeAFK[author] = 0;
+	char afkCommand[24];
+	cvar_afk_command.GetString(afkCommand, sizeof(afkCommand));
+
+	if (playerAFK[author] && StrContains(message, afkCommand, false) == -1)
+	{
+		PrintToChat(author, "[RTV] You are no longer AFK!");
+		playerAFK[author] = false;
+		timeAFK[author] = 0;
+	}
 }
 
 //Called after a client has left the server. Required for updating the RTV threshold.

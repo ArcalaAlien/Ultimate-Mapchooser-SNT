@@ -310,7 +310,7 @@ static Handle:center_message_timer = INVALID_HANDLE;
 static bool:center_warning_active = false;
 
 //Displays a message to the server
-stock DisplayServerMessage(const String:msg[], const String:type[])
+stock DisplayServerMessage(const char[] type, const char[] msg, any ...)
 {
     if (center_warning_active)
     {
@@ -322,8 +322,13 @@ stock DisplayServerMessage(const String:msg[], const String:type[])
     {
         return;
     }
-    decl String:message[255];
-    strcopy(message, sizeof(message), msg);
+
+    int len = strlen(msg) + 255;
+    char[] msgF = new char[len];
+    VFormat(msgF, len, msg, 3);
+
+    char message[255];
+    strcopy(message, sizeof(message), msgF);
 
     //Display a chat message ("S") if the user specifies.
     if (StrContains(type, "S") != -1)
