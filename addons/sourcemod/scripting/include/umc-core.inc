@@ -44,6 +44,7 @@ public __pl_umccore_SetNTVOptional()
 	MarkNativeAsOptional("UMC_AddWeightModifier");
 	MarkNativeAsOptional("UMC_StartVote");
 	MarkNativeAsOptional("UMC_GetCurrentMapGroup");
+	MarkNativeAsOptional("UMC_GetMapGroup");
 	MarkNativeAsOptional("UMC_GetRandomMap");
 	MarkNativeAsOptional("UMC_SetNextMap");
 	MarkNativeAsOptional("UMC_IsMapNominated");
@@ -288,6 +289,17 @@ native bool:UMC_NominateMap(Handle:mapcycle, const String:map[], const String:gr
  */
 native bool:UMC_IsMapValid(Handle:mapcycle, const String:map[], const String:group[], bool:isNom, bool:forMapChange);
 
+/**
+ * Grabs the group of the specified map from the mapcycle.
+ * 
+ * @param mapcycle		UMC Mapcycle
+ * @param map			Map name you want the group of.
+ * @param group			char buffer to store the group name.
+ * @param maxlen		Length of the char buffer.
+ * 
+ * @noreturn
+ */
+native void UMC_GetMapGroup(Handle mapcycle, const char[] map, char[] group, int maxlen);
 
 /**
  * Returns a copy of the given mapcycle with all invalid maps and groups filtered out.

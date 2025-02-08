@@ -60,6 +60,35 @@ stock StringToUpper(String:str[])
     }
 }
 
+stock UMC_GetValidMap(char[] mapWanted, char[] mapFound, int len)
+{
+	char mapCyclePath[PLATFORM_MAX_PATH];
+	ConVar sm_umc_nominate_cyclefile = FindConVar("sm_umc_nominate_cyclefile");
+	if (sm_umc_nominate_cyclefile != null)
+		sm_umc_nominate_cyclefile.GetString(mapCyclePath, sizeof(mapCyclePath));
+	
+	Handle umcMapcycle = GetKvFromFile(mapCyclePath, "umc_rotation");
+	ArrayList validMaps = view_as<ArrayList>(UMC_CreateValidMapArray(umcMapcycle, umcMapcycle, INVALID_GROUP, false, false));
+	StringMap mapKey = new StringMap();
+
+	char mapName[256];
+	for (int i; i < validMaps.Length; i++)
+	{
+		mapKey = view_as<StringMap>(validMaps.Get(i));
+		mapKey.GetString(MAP_TRIE_MAP_KEY, mapName, sizeof(mapName));
+		if (StrContains(mapName, mapWanted, false) != -1)
+		{
+			strcopy(mapFound, len, mapName);
+			break;
+		}
+	}
+
+	// Clean-Up!
+	CloseHandle(umcMapcycle);
+	validMaps.Close();
+	mapKey.Close();
+}
+
 
 //Utility function to build a map trie.
 stock Handle:CreateMapTrie(const String:map[], const String:group[])
@@ -1287,17 +1316,13 @@ stock ArrayMin(const arr[], maxlen, &idx=0)
         return 0;
     }
 
-    new minIdx = 0;
     new min = arr[0];
     new tmp;
     for (new i = 1; i < maxlen; i++)
     {
         tmp = arr[i];
         if (tmp < min)
-        {
             min = tmp;
-            minIdx = i;
-        }
     }
     return min;
 }
@@ -1310,17 +1335,13 @@ stock ArrayMax(const arr[], maxlen, &idx=0)
         return 0;
     }
 
-    new maxIdx = 0;
     new max = arr[0];
     new tmp;
     for (new i = 1; i < maxlen; i++)
     {
         tmp = arr[i];
         if (tmp > max)
-        {
             max = tmp;
-            maxIdx = i;
-        }
     }
     return max;
 }

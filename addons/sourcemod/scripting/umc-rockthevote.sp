@@ -67,9 +67,9 @@ new Handle:cvar_enterbonusflags      = INVALID_HANDLE;
 new Handle:cvar_enterbonusamt        = INVALID_HANDLE;
 ConVar cvar_discount_afk = null;
 ConVar cvar_afk_timeout = null;
-ConVar cvar_afk_chat_timeout = null;
 ConVar cvar_afk_warning_sound = null;
 ConVar cvar_afk_move_sound = null;
+ConVar cvar_afk_command = null;
 ////----/CONVARS-----/////
 
 //Mapcycle KV
@@ -334,6 +334,12 @@ public OnPluginStart()
 		"Sound file (relative to sound folder) to play when a player is marked AFK"
 	);
 
+	cvar_afk_command = CreateConVar(
+		"sm_umc_rtv_afk_command",
+		"afk",
+		"The command players will use to toggle their afk status."
+	);
+
 	//Create the config if it doesn't exist, and then execute it.
 	AutoExecConfig(true, "umc-rockthevote");
 
@@ -423,6 +429,12 @@ public OnMapStart()
 {
 	//Setup vote sounds.
 	SetupVoteSounds();
+
+	//Register the !afk /afk command
+	char afkCommand[24];
+	cvar_afk_command.GetString(afkCommand, sizeof(afkCommand));
+	FormatEx(afkCommand, sizeof(afkCommand), "sm_%s", afkCommand);
+	RegConsoleCmd(afkCommand, Command_AFK);
 }
 
 //Called when a client enters the server. Required for updating the RTV threshold.
@@ -665,6 +677,20 @@ public Action:Command_RTV(client, args)
 	return Plugin_Handled;
 }
 
+public Action Command_AFK(int client, int args)
+{
+	if (client == 0)
+		return Plugin_Handled;
+	
+	playerAFK[client] = !playerAFK[client];
+	if (playerAFK[client])
+		PrintToChat(client, "[RTV] You are now afk!");
+	else
+		PrintToChat(client, "[RTV] You are no longer afk!");
+	
+	return Plugin_Handled;
+}
+
 //************************************************************************************************//
 //                                              SETUP                                             //
 //************************************************************************************************//
@@ -730,7 +756,7 @@ RemovePreviousMapsFromCycle()
 {
 	map_kv = CreateKeyValues("umc_rotation");
 	KvCopySubkeys(umc_mapcycle, map_kv);
-	FilterMapcycleFromArrays(map_kv, vote_mem_arr, vote_catmem_arr, GetConVarInt(cvar_rtv_catmem));
+	FilterMapcycleFromArrays(view_as<KeyValues>(map_kv), view_as<ArrayList>(vote_mem_arr), view_as<ArrayList>(vote_catmem_arr), GetConVarInt(cvar_rtv_catmem));
 }
 
 //************************************************************************************************//

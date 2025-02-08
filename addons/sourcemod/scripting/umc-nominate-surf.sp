@@ -395,7 +395,12 @@ public Action:OnPlayerChat(client, const String:command[], argc)
 						if (StrContains(arg, "@ws.") != -1)
 							ExtractWorkshopMapNameUMC(arg, arg, sizeof(arg));
 
-						PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, arg, groupName);
+						// Ignore this part, this is just truncating the group names for the surf server.
+						char groupAbbrv[16];
+						if (GetSurfGroupAbbrv(groupName, groupAbbrv, sizeof(groupAbbrv)))
+							PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, arg, groupAbbrv);
+						else
+							PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, arg, groupName);
 						LogUMCMessage("%N has nominated '%s' from group '%s'", client, arg, groupName);
 					}
 				}
@@ -662,10 +667,18 @@ public Action:Command_Nominate(client, args)
 					char playerName[MAX_NAME_LENGTH];
 					GetClientName(client, playerName, sizeof(playerName));
 
-					if (isWorkshop)
-						PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, argDisplay, groupName);
-					else
-						PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, arg, groupName);
+					// Ignore this part, this is just truncating the group names for the surf server.
+					char groupAbbrv[16];
+					if (GetSurfGroupAbbrv(groupName, groupAbbrv, sizeof(groupAbbrv)))
+						if (isWorkshop)
+							PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, argDisplay, groupAbbrv);
+						else
+							PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, arg, groupAbbrv);
+					else //Display a message.
+						if (isWorkshop)
+							PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, argDisplay, groupName);
+						else
+							PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, arg, groupName);
 
 					LogUMCMessage("%N has nominated '%s' from group '%s'", client, arg, groupName);
 				}
@@ -796,7 +809,6 @@ void DisplayRPList(int client)
 			voteMemory.GetString(i, mapInfo, sizeof(mapInfo));
 			if (StrContains(mapInfo, "workshop/") != -1)
 				GetMapDisplayName(mapInfo, mapInfo, sizeof(mapInfo));
-			
 			UMC_GetMapGroup(umc_mapcycle, mapInfo, mapGroup, sizeof(mapGroup));
 			
 			if (mapGroup[0] != '\0')
@@ -1202,10 +1214,28 @@ public Handle_NominationMenu(Handle:menu, MenuAction:action, client, param2)
 			char playerName[MAX_NAME_LENGTH];
 			GetClientName(client, playerName, sizeof(playerName));
 
+			//Display a message.
+			// Ignore this part, this is just truncating the group names for the surf server.
+
 			if (StrContains(map, "ws.") != -1)
 				ExtractWorkshopMapNameUMC(map, map, sizeof(map));
 
-			PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, map, group);
+			char groupAbbrv[16];
+			if (StrContains(nomGroup, "Com") != -1) {
+				FormatEx(groupAbbrv, sizeof(groupAbbrv), "Combat");
+				PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, map, groupAbbrv);
+			}
+			else if (StrContains(nomGroup, "Skil") != -1) {
+				FormatEx(groupAbbrv, sizeof(groupAbbrv), "Skill");
+				PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, map, groupAbbrv);
+			}
+			else if (StrContains(nomGroup, "Are") != -1) {
+				FormatEx(groupAbbrv, sizeof(groupAbbrv), "Arena");
+				PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, map, groupAbbrv);
+			}
+			else
+				PrintToChatAll("[UMC] %s has nominated %s (%s)", playerName, map, group);
+			
 			LogUMCMessage("%N has nominated '%s' from group '%s'", client, map, group);
 
 			//Close handles for stored data for the client's menu.
@@ -1318,4 +1348,38 @@ public UMC_DisplayMapCycle(client, bool:filtered)
 	{
 		PrintKvToConsole(umc_mapcycle, client);
 	}
+}
+
+//************************************************************************************************//
+//                                   	  MISC FUNCTIONS    			                          //
+//************************************************************************************************//
+
+/**
+ * 	Strips the surf map groups of "surf"
+ * 
+ *  @param groupName		Group name
+ *  @param output			Output buffer.
+ *  @param len				Buffer length.
+ * 
+ *  @return					True if stripped, false if not.
+ */
+bool GetSurfGroupAbbrv(char[] groupName, char[] output, int len)
+{
+	if (StrContains(groupName, "Combat") != -1)
+	{
+		FormatEx(output, len, "Combat");
+		return true;
+	}
+	else if (StrContains(groupName, "Skill") != -1)
+	{
+		FormatEx(output, len, "Skill");
+		return true;
+	}
+	else if (StrContains(groupName, "Arena") != -1)
+	{
+		FormatEx(output, len, "Arena");
+		return true;
+	}
+
+	return false;
 }

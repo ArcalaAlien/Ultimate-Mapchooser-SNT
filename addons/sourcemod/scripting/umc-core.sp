@@ -34,7 +34,7 @@ along with this plugin.  If not, see <http://www.gnu.org/licenses/>.
 public Plugin:myinfo =
 {
 	name        = "[UMC] Ultimate Mapchooser Core",
-	author      = "Steell, Powerlord, Mr.Silence, AdRiAnIlloO, Edit By ArcalaAlien",
+	author      = "Steell, Powerlord, Mr.Silence, AdRiAnIlloO, Edit By Arcala the Gyiyg",
 	description = "Core component for [UMC]",
 	version     = PL_VERSION,
 	url         = "http://forums.alliedmods.net/showthread.php?t=134190"
@@ -62,6 +62,7 @@ new Handle:cvar_novote              = INVALID_HANDLE;
 new Handle:cvar_nommsg_disp         = INVALID_HANDLE;
 new Handle:cvar_mapnom_display      = INVALID_HANDLE;
 ConVar cvar_display_cat				= null;
+ConVar cvar_extend_map_first_join	= null;
 ////----/CONVARS-----/////
 
 //Stores the current category.
@@ -136,6 +137,7 @@ public APLRes:AskPluginLoad2(Handle:myself, bool:late, String:error[], err_max)
 	CreateNative("UMC_AddWeightModifier", Native_UMCAddWeightModifier);
 	CreateNative("UMC_StartVote", Native_UMCStartVote);
 	CreateNative("UMC_GetCurrentMapGroup", Native_UMCGetCurrentGroup);
+	CreateNative("UMC_GetMapGroup", Native_UMCGetMapGroup);
 	CreateNative("UMC_GetRandomMap", Native_UMCGetRandomMap);
 	CreateNative("UMC_SetNextMap", Native_UMCSetNextMap);
 	CreateNative("UMC_IsMapNominated", Native_UMCIsMapNominated);
@@ -269,6 +271,13 @@ public OnPluginStart()
 		0, true, 0.0, true, 1.0
 	);
 
+	cvar_extend_map_first_join = CreateConVar(
+		"sm_umc_extend_on_join",
+		"0",
+		"Extends the map automatically by 15 minutes if the server was empty before a client joined.",
+		0, true, 0.0, true, 1.0
+	);
+
 	//Version
 	cvar_version = CreateConVar(
 		"improved_map_randomizer_version", PL_VERSION, "Ultimate Mapchooser's version",
@@ -283,8 +292,9 @@ public OnPluginStart()
 	RegAdminCmd("sm_umc_reload_mapcycles", Command_Reload, ADMFLAG_RCON, "Reloads the mapcycle file.");
 	RegAdminCmd("sm_umc_stopvote", Command_StopVote, ADMFLAG_CHANGEMAP, "Stops all UMC votes that are in progress.");
 	RegAdminCmd("sm_umc_maphistory", Command_MapHistory, ADMFLAG_CHANGEMAP, "Shows the most recent maps played");
-	RegAdminCmd("sm_umc_displaymaplists", Command_DisplayMapLists, ADMFLAG_CHANGEMAP,
-		"Displays the current maplist for all UMC modules.");
+	RegAdminCmd("sm_umc_displaymaplists", Command_DisplayMapLists, ADMFLAG_CHANGEMAP, "Displays the current maplist for all UMC modules.");
+	RegAdminCmd("sm_workshop", Command_ChangeToWorkshopMap, ADMFLAG_CHANGEMAP, "sm_workshop <mapid> Use this to change to a workshop map. You need the id number from the workshop link. /?id=##########");
+	RegAdminCmd("sm_ws", Command_ChangeToWorkshopMap, ADMFLAG_CHANGEMAP, "sm_ws <mapid> Use this to change to a workshop map. You need the id number from the workshop link. /?id=##########");
 
 	//Hook round end events
 	HookEvent("round_end",            Event_RoundEnd); //Generic
@@ -428,6 +438,13 @@ public OnClientDisconnect(client)
 		CloseHandle(nomination);
 		RemoveFromArray(nominations_arr, index);
 	}
+}
+
+public void OnClientPutInServer(int client)
+{
+	if (cvar_extend_map_first_join.BoolValue == true)
+		if ((GetClientCount(false) - 1) == 0)
+			ExtendMapTimeLimit(15 * 60);
 }
 
 // Called when a round ends.
@@ -1341,6 +1358,57 @@ public Native_UMCGetCurrentGroup(Handle:plugin, numParams)
 	SetNativeString(1, current_cat, GetNativeCell(2), false);
 }
 
+public void Native_UMCGetMapGroup(Handle plugin, int numParams)
+{
+	char map[MAP_LENGTH];
+	GetNativeString(2, map, sizeof(map));
+
+	LogUMCMessage("Getting group for map: %s", map);
+
+	Handle mapCycle = GetNativeCell(1);
+	ArrayList groupList = view_as<ArrayList>(UMC_CreateValidMapGroupArray(mapCycle, mapCycle, false, false));
+
+	if (groupList.Length != 0)
+	{
+		char group[MAP_LENGTH];
+		for (int i; i < groupList.Length; i++)
+		{
+			groupList.GetString(i, group, sizeof(group));
+			LogUMCMessage("Current group: %s", group);
+
+			if (StrContains(group, "featured", false) != -1 || StrContains(group, "new", false) != -1)
+				continue;
+			
+			ArrayList mapList = view_as<ArrayList>(UMC_CreateValidMapArray(mapCycle, mapCycle, group, false, false));
+			if (mapList.Length != 0)
+			{
+				char mapInList[MAP_LENGTH];
+				StringMap mapTrie = new StringMap();
+				for (int j; j < mapList.Length; j++)
+				{
+					mapTrie = mapList.Get(j);
+
+					mapTrie.GetString(MAP_TRIE_MAP_KEY, mapInList, sizeof(mapInList));
+					LogUMCMessage("Current map in list: %s", mapInList);
+
+					if (StrContains(mapInList, map, false) != -1)
+					{
+						LogUMCMessage("Found %s in %s", map, group);
+						SetNativeString(3, group, GetNativeCell(4));
+						groupList.Close();
+						mapList.Close();
+						return;
+					}
+				}
+				mapTrie.Close();
+			}
+
+			mapList.Close();
+		}
+	}
+	groupList.Close();
+}
+
 //************************************************************************************************//
 //                                            COMMANDS                                            //
 //************************************************************************************************//
@@ -1465,6 +1533,26 @@ public Action:Command_StopVote(client, args)
 
 	return Plugin_Handled;
 }
+
+public Action Command_ChangeToWorkshopMap(int client, int args)
+{
+	// Todo.
+	if (args != 1)
+	{
+		PrintToChat(client, "[UMC] Usage: !workshop/!ws <id>. Grab the numbers after ?id= in the workshop map link.");
+		return Plugin_Handled;
+	}
+
+	char mapId[32]; char workshopURL[MAP_LENGTH]; char mapName[MAP_LENGTH];
+	GetCmdArg(1, mapId, sizeof(mapId));
+	FormatEx(workshopURL, sizeof(workshopURL), "workshop/custom_map.ugc%s", mapId);
+	GetMapDisplayName(workshopURL, mapName, sizeof(mapName));
+
+	PrintToChatAll("[UMC] Changing map to %s.", mapName);
+	ForceChangeMap(workshopURL, 5.0, "Admin changed map to workshop map.");
+	return Plugin_Handled;
+}
+
 
 //************************************************************************************************//
 //                                        MAPCYCLE STUFF                                          //
